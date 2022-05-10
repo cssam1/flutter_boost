@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import io.flutter.embedding.android.ExclusiveAppComponent;
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode;
 import io.flutter.embedding.android.FlutterTextureView;
@@ -35,11 +36,11 @@ import static com.idlefish.flutterboost.containers.FlutterActivityLaunchConfigs.
 import static com.idlefish.flutterboost.containers.FlutterActivityLaunchConfigs.EXTRA_URL;
 import static com.idlefish.flutterboost.containers.FlutterActivityLaunchConfigs.EXTRA_URL_PARAM;
 
-public class FlutterBoostActivity extends FlutterActivity implements FlutterViewContainer {
+public class FlutterBoostActivity extends FlutterActivity implements FlutterViewContainer, ExclusiveAppComponent<Activity> {
     private static final String TAG = "FlutterBoostActivity";
     private static final boolean DEBUG = false;
     private final String who = UUID.randomUUID().toString();
-    private final FlutterTextureHooker textureHooker =new FlutterTextureHooker();
+    private final FlutterTextureHooker textureHooker = new FlutterTextureHooker();
     private FlutterView flutterView;
     private PlatformPlugin platformPlugin;
     private LifecycleStage stage;
@@ -47,10 +48,6 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        final FlutterContainerManager containerManager = FlutterContainerManager.instance();
-        // try to detach prevous container from the engine.
-        FlutterViewContainer top = containerManager.getTopContainer();
-        if (top != null && top != this) top.detachFromEngineIfNeeded();
         super.onCreate(savedInstanceState);
         stage = LifecycleStage.ON_CREATE;
         flutterView = FlutterBoostUtils.findFlutterView(getWindow().getDecorView());
@@ -68,6 +65,11 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
          * a new FlutterActivity is attached in Flutter2.0.
          */
         if (DEBUG) Log.d(TAG, "#detachFromFlutterEngine: " + this);
+    }
+
+    @Override
+    public Activity getAppComponent() {
+        return getActivity();
     }
 
     @Override
@@ -156,13 +158,14 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
     private void performAttach() {
         if (!isAttached) {
             // Attach plugins to the activity.
-            getFlutterEngine().getActivityControlSurface().attachToActivity(getActivity(), getLifecycle());
+            getFlutterEngine().getActivityControlSurface().attachToActivity(this, getLifecycle());
 
             if (platformPlugin == null) {
                 platformPlugin = new PlatformPlugin(getActivity(), getFlutterEngine().getPlatformChannel());
             }
 
             // Attach rendering pipeline.
+            Assert.assertNotNull(flutterView);
             flutterView.attachToFlutterEngine(getFlutterEngine());
             isAttached = true;
             if (DEBUG) Log.d(TAG, "#performAttach: " + this);
@@ -178,6 +181,7 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
             releasePlatformChannel();
 
             // Detach rendering pipeline.
+            Assert.assertNotNull(flutterView);
             flutterView.detachFromFlutterEngine();
             isAttached = false;
             if (DEBUG) Log.d(TAG, "#performDetach: " + this);
@@ -198,7 +202,7 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
             Field isDisplayingFlutterUiField = FlutterRenderer.class.getDeclaredField("isDisplayingFlutterUi");
             isDisplayingFlutterUiField.setAccessible(true);
             isDisplayingFlutterUiField.setBoolean(flutterRenderer, false);
-            assert(!flutterRenderer.isDisplayingFlutterUi());
+            assert (!flutterRenderer.isDisplayingFlutterUi());
         } catch (Exception e) {
             Log.e(TAG, "You *should* keep fields in io.flutter.embedding.engine.renderer.FlutterRenderer.");
             e.printStackTrace();
@@ -283,16 +287,15 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
     @Override
     public String getUrl() {
         if (!getIntent().hasExtra(EXTRA_URL)) {
-            Log.e(TAG, "Oops! The activity url are *MISSED*! You should override"
-                    + " the |getUrl|, or set url via |CachedEngineIntentBuilder.url|.");
-            return null;
+            throw new RuntimeException("Oops! The activity url are *MISSED*! You should "
+                    + "override the |getUrl|, or set url via CachedEngineIntentBuilder.");
         }
         return getIntent().getStringExtra(EXTRA_URL);
     }
 
     @Override
     public Map<String, Object> getUrlParams() {
-        return (HashMap<String, Object>)getIntent().getSerializableExtra(EXTRA_URL_PARAM);
+        return (HashMap<String, Object>) getIntent().getSerializableExtra(EXTRA_URL_PARAM);
     }
 
     @Override
@@ -305,12 +308,12 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
 
     @Override
     public String getCachedEngineId() {
-      return FlutterBoost.ENGINE_ID;
+        return FlutterBoost.ENGINE_ID;
     }
 
     @Override
     public boolean isOpaque() {
-        return getBackgroundMode() ==  BackgroundMode.opaque;
+        return getBackgroundMode() == BackgroundMode.opaque;
     }
 
     @Override
@@ -348,7 +351,7 @@ public class FlutterBoostActivity extends FlutterActivity implements FlutterView
         }
 
         public FlutterBoostActivity.CachedEngineIntentBuilder urlParams(Map<String, Object> params) {
-            this.params = (params instanceof HashMap) ? (HashMap)params : new HashMap<String, Object>(params);
+            this.params = (params instanceof HashMap) ? (HashMap) params : new HashMap<String, Object>(params);
             return this;
         }
 
